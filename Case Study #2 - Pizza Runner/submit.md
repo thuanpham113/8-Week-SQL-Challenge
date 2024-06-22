@@ -1,4 +1,4 @@
-A. Pizza Metrics
+# A. Pizza Metrics
 1. How many pizzas were ordered?
 ```
 SELECT COUNT(*) FROM customer_orders;
@@ -79,7 +79,7 @@ count(order_id) as total_orders
 FROM customer_orders
 GROUP BY TO_CHAR(order_time, 'Day')
 ```
-B. Runner and Customer Experience
+# B. Runner and Customer Experience
 1. How many runners signed up for each 1 week period? (i.e. week starts 2021-01-01)
 ```
 SELECT to_char(registration_date, 'ww') as week_start, count(runner_id) as total_runners
@@ -154,7 +154,7 @@ SELECT
 FROM runner_orders
 GROUP BY runner_id;
 ```
-C.Ingredient Optimisation 
+# C. Ingredient Optimisation 
 1. What are the standard ingredients for each pizza ? 
 ```
 WITH
@@ -443,11 +443,69 @@ FROM pizza_toppings_cte
 GROUP BY ingredient_list
 ORDER BY total_quantity DESC;
 ```
-D. Pricing and Ratings
+# D. Pricing and Ratings
 1. If a Meat Lovers pizza costs $12 and Vegetarian costs $10 and there were no charges for changes - how much money has Pizza Runner made so far if there are no delivery fees?
-2. What if there pg_wal_lsn_diff an additional $1 charge for any pizza extras?
+```
+SELECT SUM(
+        CASE
+            WHEN pn.pizza_name = 'Meatlovers' THEN 12
+            ELSE 10
+        END
+    ) as total_revenue
+FROM
+    customer_orders co
+    JOIN pizza_names pn ON co.pizza_id = pn.pizza_id;
+```
+2. What if there was an additional $1 charge for any pizza extras?
 Add cheese is $1 extra
+```
+SELECT sum(
+        CASE
+            WHEN pn.pizza_name = 'Meatlovers' THEN 12
+            ELSE 10
+        END + (
+            SELECT count(num) as extra_count
+            FROM unnest(
+                    string_to_array(
+                        case
+                            when co.extras ISNULL then ''
+                            else (co.extras)
+                        end, ', '
+                    )
+                ) num
+        )
+    ) as total_revenue
+FROM
+    customer_orders co
+    JOIN pizza_recipes pr ON co.pizza_id = pr.pizza_id
+    JOIN pizza_names pn ON co.pizza_id = pn.pizza_id;
+```
 3. The Pizza Runner team now wants to add an additional ratings system that allows customers to rate their runner, how would you design an additional table for this new dataset - generate a schema for this new table and insert your own data for ratings for each successful customer order between 1 to 5.
+```
+CREATE TABLE IF NOT EXISTS customer_ratings (
+    "customer_id" INTEGER,
+    "order_id" INTEGER,
+    "runner_id" INTEGER,
+    "rating" INTEGER
+);
+
+INSERT INTO
+    customer_ratings (
+        "customer_id",
+        "order_id",
+        "runner_id",
+        "rating"
+    )
+VALUES (101, 1, 1, 5),
+    (101, 2, 1, 4),
+    (102, 3, 1, 3),
+    (103, 4, 2, 5),
+    (104, 5, 3, 4),
+    (105, 7, 2, 3),
+    (102, 8, 2, 2),
+    (103, 9, 2, 1),
+    (104, 10, 1, 5);
+```
 4. Using your newly generated table - can you join all of the information together to form a table which has the following information for successful deliveries?
     customer_id
     order_id
@@ -459,6 +517,78 @@ Add cheese is $1 extra
     Delivery duration
     Average speed
     Total number of pizzas
+```
+SELECT
+    cr.customer_id,
+    cr.order_id,
+    cr.runner_id,
+    cr.rating,
+    co.order_time,
+    ro.pickup_time,
+    date_part(
+        'minute',
+        to_timestamp(
+            ro.pickup_time,
+            'YYYY-MM-DD HH24:MI:SS'
+        ) - co.order_time
+    ) as time_to_pickup,
+    to_number(
+        REPLACE(ro.duration, 'minutes', ''),
+        'S9999D99'
+    ) as delivery_duration,
+    round(
+        to_number(
+            REPLACE(ro.distance, 'km', ''),
+            'S999D99'
+        ) / to_number(
+            REPLACE(ro.duration, 'minutes', ''),
+            'S9999D99'
+        ) * 60,
+        2
+    ) as avg_speed,
+    count(co.pizza_id) as total_pizzas
+FROM
+    customer_ratings cr
+    JOIN customer_orders co ON cr.order_id = co.order_id
+    JOIN runner_orders ro ON co.order_id = ro.order_id
+WHERE
+    ro.distance != 'null'
+    OR ro.distance != NULL
+GROUP BY
+    cr.customer_id,
+    cr.order_id,
+    cr.runner_id,
+    cr.rating,
+    co.order_time,
+    ro.pickup_time,
+    ro.duration,
+    ro.distance
+ORDER BY cr.customer_id;
+```
 5. If a Meat Lovers pizza was $12 and Vegetarian $10 fixed prices with no cost for extras and each runner is paid $0.30 per kilometre traveled - how much money does Pizza Runner have left over after these deliveries?
-E. Bonus Questions
+```
+SELECT SUM(
+        CASE
+            WHEN pn.pizza_name = 'Meatlovers' THEN 12
+            ELSE 10
+        END
+    ) - SUM(
+        to_number(
+            REPLACE(ro.distance, 'km', ''),
+            'S999D99'
+        ) * 0.30    
+    ) as total_revenue
+FROM
+    customer_orders co
+    JOIN pizza_names pn ON co.pizza_id = pn.pizza_id
+    JOIN runner_orders ro ON co.order_id = ro.order_id
+WHERE
+    ro.distance != 'null'
+    OR ro.distance != NULL;
+```
+# E. Bonus Questions
 If Danny wants to expand his range of pizzas - how would this impact the existing data design? Write an INSERT statement to demonstrate what would happen if a new Supreme pizza with all the toppings was added to the Pizza Runner menu?
+```
+INSERT INTO pizza_names ("pizza_id", "pizza_name")
+VALUES (3, 'Supreme');
+```
