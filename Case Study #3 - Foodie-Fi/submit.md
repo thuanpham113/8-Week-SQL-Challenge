@@ -2,7 +2,7 @@
 Based off the 8 sample customers provided in the sample from the subscriptions table, write a brief description about each customer’s onboarding journey.
 
 Try to keep it as short as possible - you may also want to run some sort of join to make your explanations a bit easier!
-
+```
 SELECT s.customer_id,
 string_agg(p.plan_name, ' -> ') AS plan_names,
 string_agg(to_char(s.start_date, 'dd/mm/yyyy'), ' -> ') AS start_dates
@@ -10,7 +10,7 @@ FROM subscriptions s
 JOIN plans p ON s.plan_id = p.plan_id
 GROUP BY s.customer_id
 ORDER BY s.customer_id;
-
+```
 # B. Data Analysis Questions
 1. How many customers has Foodie-Fi ever had?
 ```
